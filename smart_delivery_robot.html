@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Delivery Robot — A* Pathfinding</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050a0f;
+    --panel: #0a1520;
+    --border: #1a3a5c;
+    --accent: #00d4ff;
+    --accent2: #ff6b35;
+    --green: #00ff88;
+    --red: #ff3366;
+    --yellow: #ffd700;
+    --purple: #a855f7;
+    --text: #c8e6f5;
+    --muted: #4a7a9b;
+    --cell-normal: #0d2137;
+    --cell-traffic: #1a3a0d;
+    --cell-mud: #2d1a0a;
+    --cell-blocked: #0a0a0a;
+    --cell-open: rgba(0,212,255,0.08);
+    --cell-closed: rgba(168,85,247,0.08);
+    --cell-path: rgba(0,255,136,0.2);
+    --cell-start: rgba(0,255,136,0.4);
+    --cell-goal: rgba(255,51,102,0.4);
+    --cell-robot: #00d4ff;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  /* Animated scanline bg */
+  body::before {
+    content:'';
+    position:fixed;
+    inset:0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,255,0.015) 2px, rgba(0,212,255,0.015) 4px);
+    pointer-events:none;
+    z-index:0;
+  }
+
+  header {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--border);
+    display:flex; align-items:center; gap:1.5rem;
+    background: linear-gradient(90deg, rgba(0,212,255,0.05), transparent);
+    position:relative; z-index:1;
+  }
+  .logo {
+    font-family:'Orbitron',monospace;
+    font-size:1.3rem; font-weight:900;
+    color: var(--accent);
+    letter-spacing:0.05em;
+    text-shadow: 0 0 20px rgba(0,212,255,0.5);
+  }
+  .logo span { color: var(--accent2); }
+  .header-sub {
+    font-size:0.7rem; color:var(--muted);
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+  }
+  .badge {
+    margin-left:auto;
+    background: rgba(0,212,255,0.1);
+    border: 1px solid var(--accent);
+    padding:0.3rem 0.8rem;
+    border-radius:2px;
+    font-size:0.65rem;
+    color:var(--accent);
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+  }
+
+  .main-layout {
+    display:grid;
+    grid-template-columns: 280px 1fr 280px;
+    gap:0;
+    height:calc(100vh - 70px);
+    position:relative; z-index:1;
+  }
+
+  /* ===== SIDE PANELS ===== */
+  .side-panel {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding:1.2rem;
+    overflow-y:auto;
+    display:flex; flex-direction:column; gap:1rem;
+  }
+  .side-panel.right { border-right:none; border-left:1px solid var(--border); }
+
+  .section-title {
+    font-family:'Orbitron',monospace;
+    font-size:0.6rem;
+    color:var(--accent);
+    letter-spacing:0.2em;
+    text-transform:uppercase;
+    padding-bottom:0.5rem;
+    border-bottom:1px solid var(--border);
+    margin-bottom:0.5rem;
+  }
+
+  label { font-size:0.7rem; color:var(--muted); display:block; margin-bottom:0.3rem; }
+  input[type=number], select {
+    width:100%;
+    background: rgba(0,212,255,0.05);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:0.4rem 0.6rem;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.75rem;
+    border-radius:2px;
+    outline:none;
+    transition: border-color 0.2s;
+  }
+  input[type=number]:focus, select:focus { border-color:var(--accent); }
+  .input-row { display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; }
+
+  .btn {
+    width:100%;
+    padding:0.55rem;
+    font-family:'Orbitron',monospace;
+    font-size:0.65rem;
+    font-weight:700;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    border:none; cursor:pointer;
+    border-radius:2px;
+    transition: all 0.2s;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #0066ff, #00d4ff);
+    color:#000;
+    box-shadow: 0 0 15px rgba(0,212,255,0.3);
+  }
+  .btn-primary:hover { box-shadow: 0 0 25px rgba(0,212,255,0.6); transform:translateY(-1px); }
+  .btn-secondary {
+    background: rgba(255,107,53,0.15);
+    border:1px solid var(--accent2);
+    color:var(--accent2);
+  }
+  .btn-secondary:hover { background:rgba(255,107,53,0.3); }
+  .btn-success {
+    background: linear-gradient(135deg, #00aa55, #00ff88);
+    color:#000;
+    box-shadow: 0 0 15px rgba(0,255,136,0.2);
+  }
+  .btn-success:hover { box-shadow:0 0 25px rgba(0,255,136,0.5); transform:translateY(-1px); }
+  .btn-danger {
+    background: rgba(255,51,102,0.15);
+    border:1px solid var(--red);
+    color:var(--red);
+  }
+  .btn-danger:hover { background:rgba(255,51,102,0.3); }
+  .btn-compare {
+    background: linear-gradient(135deg, #6600cc, #a855f7);
+    color:#fff;
+    box-shadow: 0 0 15px rgba(168,85,247,0.2);
+  }
+  .btn-compare:hover { box-shadow:0 0 25px rgba(168,85,247,0.5); transform:translateY(-1px); }
+  .btn:disabled { opacity:0.4; cursor:not-allowed; transform:none !important; }
+
+  /* Terrain selector */
+  .terrain-grid {
+    display:grid; grid-template-columns:repeat(2,1fr); gap:0.4rem;
+  }
+  .terrain-btn {
+    padding:0.45rem 0.4rem;
+    border-radius:2px;
+    border:2px solid transparent;
+    cursor:pointer;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.65rem;
+    text-align:center;
+    transition:all 0.2s;
+    display:flex; flex-direction:column; align-items:center; gap:0.2rem;
+  }
+  .terrain-btn.active { box-shadow:0 0 12px; }
+  .terrain-btn span { font-size:0.9rem; }
+  .t-road { background:rgba(13,33,55,0.8); border-color:#1a3a5c; color:#4a9eca; }
+  .t-road.active { border-color:var(--accent); color:var(--accent); box-shadow-color:var(--accent); }
+  .t-traffic { background:rgba(26,58,13,0.8); border-color:#2a5a1a; color:#6aaa3a; }
+  .t-traffic.active { border-color:#8f3; color:#8f3; }
+  .t-mud { background:rgba(45,26,10,0.8); border-color:#5a3a1a; color:#c8843a; }
+  .t-mud.active { border-color:#fa0; color:#fa0; }
+  .t-blocked { background:rgba(10,10,10,0.8); border-color:#333; color:#777; }
+  .t-blocked.active { border-color:#aaa; color:#ccc; }
+  .t-start { background:rgba(0,80,40,0.8); border-color:#00aa55; color:#00ff88; }
+  .t-start.active { border-color:var(--green); color:var(--green); }
+  .t-goal { background:rgba(80,0,20,0.8); border-color:#aa0033; color:#ff3366; }
+  .t-goal.active { border-color:var(--red); color:var(--red); }
+
+  /* Stats */
+  .stat-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:0.35rem 0;
+    border-bottom:1px solid rgba(26,58,92,0.4);
+    font-size:0.72rem;
+  }
+  .stat-row .label { color:var(--muted); }
+  .stat-row .value { color:var(--accent); font-weight:600; }
+  .stat-row .value.green { color:var(--green); }
+  .stat-row .value.orange { color:var(--accent2); }
+  .stat-row .value.purple { color:var(--purple); }
+
+  /* Log */
+  #log {
+    background: rgba(0,0,0,0.3);
+    border:1px solid var(--border);
+    border-radius:2px;
+    padding:0.6rem;
+    font-size:0.62rem;
+    line-height:1.6;
+    max-height:220px;
+    overflow-y:auto;
+    color:var(--muted);
+    flex:1;
+  }
+  #log .log-info { color:var(--accent); }
+  #log .log-success { color:var(--green); }
+  #log .log-warn { color:var(--yellow); }
+  #log .log-error { color:var(--red); }
+  #log .log-path { color:var(--accent2); }
+
+  /* Compare panel */
+  .compare-box {
+    background:rgba(168,85,247,0.05);
+    border:1px solid rgba(168,85,247,0.3);
+    border-radius:2px;
+    padding:0.8rem;
+    font-size:0.68rem;
+  }
+  .compare-box h4 { font-family:'Orbitron',monospace; font-size:0.6rem; color:var(--purple); margin-bottom:0.5rem; letter-spacing:0.1em; }
+  .compare-row { display:flex; justify-content:space-between; padding:0.2rem 0; color:var(--muted); }
+  .compare-row b { color:var(--text); }
+
+  /* Legend */
+  .legend-item {
+    display:flex; align-items:center; gap:0.5rem;
+    font-size:0.68rem; padding:0.2rem 0;
+  }
+  .legend-dot { width:14px; height:14px; border-radius:2px; flex-shrink:0; }
+
+  /* Slider */
+  input[type=range] {
+    width:100%; accent-color:var(--accent); margin-top:0.3rem;
+  }
+
+  /* ===== CENTER - GRID ===== */
+  .center-panel {
+    display:flex; flex-direction:column; align-items:center;
+    padding:1rem;
+    overflow:hidden;
+    background: radial-gradient(ellipse at center, rgba(0,50,80,0.2) 0%, transparent 70%);
+  }
+
+  #grid-container {
+    position:relative;
+    display:inline-block;
+    border:1px solid var(--border);
+    box-shadow: 0 0 40px rgba(0,212,255,0.1), inset 0 0 40px rgba(0,0,0,0.5);
+    border-radius:3px;
+    overflow:hidden;
+  }
+
+  #grid {
+    display:grid;
+    gap:1px;
+    background: var(--border);
+    cursor:pointer;
+    user-select:none;
+  }
+
+  .cell {
+    position:relative;
+    display:flex; align-items:center; justify-content:center;
+    font-size:0.5rem;
+    font-family:'JetBrains Mono',monospace;
+    cursor:pointer;
+    transition: background 0.15s;
+    overflow:hidden;
+  }
+  .cell::after {
+    content:'';
+    position:absolute; inset:0;
+    background: rgba(0,212,255,0);
+    transition: background 0.2s;
+    pointer-events:none;
+  }
+  .cell:hover::after { background: rgba(0,212,255,0.15); }
+
+  .cell.normal   { background: var(--cell-normal); }
+  .cell.traffic  { background: #0d2208; }
+  .cell.mud      { background: #1a0d05; }
+  .cell.blocked  { background: #050505; }
+  .cell.start    { background: rgba(0,180,80,0.35); border:1px solid #00aa55; }
+  .cell.goal     { background: rgba(200,0,50,0.35); border:1px solid #aa0033; }
+  .cell.open     { background: rgba(0,100,200,0.2); }
+  .cell.closed   { background: rgba(100,0,200,0.15); }
+  .cell.path     { background: rgba(0,200,100,0.25); }
+  .cell.robot    { background: rgba(0,212,255,0.4); }
+
+  .cell .cost-label {
+    position:absolute;
+    bottom:1px; right:2px;
+    font-size:0.42rem;
+    color:rgba(100,150,200,0.5);
+    pointer-events:none;
+  }
+  .cell .cell-icon {
+    font-size:1rem;
+    z-index:2;
+    pointer-events:none;
+  }
+  /* Pulse for robot */
+  @keyframes robotPulse {
+    0%,100%{ box-shadow: inset 0 0 8px rgba(0,212,255,0.8); }
+    50%{ box-shadow: inset 0 0 20px rgba(0,212,255,1); }
+  }
+  .cell.robot { animation: robotPulse 0.5s ease-in-out infinite; }
+
+  @keyframes pathFlash {
+    0%{ background:rgba(0,255,136,0.5); }
+    100%{ background:rgba(0,255,136,0.15); }
+  }
+  .cell.path-reveal { animation: pathFlash 0.4s ease-out forwards; }
+
+  @keyframes exploreFlash {
+    0%{ background:rgba(0,100,200,0.4); }
+    100%{ background:rgba(0,100,200,0.15); }
+  }
+  .cell.explore-flash { animation: exploreFlash 0.3s ease-out forwards; }
+
+  .status-bar {
+    margin-top:0.8rem;
+    display:flex; gap:1.5rem; align-items:center;
+    font-size:0.65rem;
+    color:var(--muted);
+  }
+  .status-indicator {
+    display:flex; align-items:center; gap:0.4rem;
+  }
+  .status-dot {
+    width:8px; height:8px; border-radius:50%;
+    background:var(--muted);
+  }
+  .status-dot.running { background:var(--green); box-shadow:0 0 6px var(--green); animation:blink 1s infinite; }
+  .status-dot.done { background:var(--accent); box-shadow:0 0 6px var(--accent); }
+  .status-dot.error { background:var(--red); box-shadow:0 0 6px var(--red); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* Speed control */
+  .speed-display { color:var(--accent); min-width:2.5rem; text-align:right; }
+
+  /* PEAS section */
+  .peas-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; }
+  .peas-card {
+    background:rgba(0,212,255,0.04);
+    border:1px solid rgba(0,212,255,0.15);
+    border-radius:2px;
+    padding:0.6rem;
+  }
+  .peas-card h5 { font-family:'Orbitron',monospace; font-size:0.55rem; color:var(--accent); letter-spacing:0.15em; margin-bottom:0.4rem; }
+  .peas-card p { font-size:0.58rem; color:var(--muted); line-height:1.6; }
+
+  /* Complexity box */
+  .complexity-box {
+    background:rgba(0,0,0,0.3);
+    border:1px solid var(--border);
+    border-radius:2px;
+    padding:0.7rem;
+    font-size:0.65rem;
+  }
+  .complexity-box .formula {
+    font-family:'Orbitron',monospace;
+    color:var(--yellow);
+    font-size:0.7rem;
+    text-align:center;
+    padding:0.4rem;
+    background:rgba(255,215,0,0.05);
+    border-radius:2px;
+    margin:0.4rem 0;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    width:100%; height:3px;
+    background:rgba(0,212,255,0.1);
+    border-radius:2px;
+    overflow:hidden;
+    margin:0.4rem 0;
+  }
+  .progress-fill {
+    height:100%;
+    background: linear-gradient(90deg, var(--accent), var(--green));
+    width:0%;
+    transition:width 0.3s;
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width:4px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  ::-webkit-scrollbar-thumb:hover { background:var(--muted); }
+
+  /* Modal overlay for PEAS */
+  .tab-bar {
+    display:flex; gap:0;
+    border-bottom:1px solid var(--border);
+    margin-bottom:0.8rem;
+  }
+  .tab {
+    padding:0.4rem 0.7rem;
+    font-size:0.6rem;
+    font-family:'Orbitron',monospace;
+    letter-spacing:0.08em;
+    color:var(--muted);
+    cursor:pointer;
+    border-bottom:2px solid transparent;
+    transition:all 0.2s;
+    text-transform:uppercase;
+  }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+  @media (max-width:1100px) {
+    .main-layout { grid-template-columns:220px 1fr 220px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">ROBO<span>ROUTE</span></div>
+    <div class="header-sub">Smart Delivery System · A* Pathfinding Engine</div>
+  </div>
+  <div class="badge">A* + Dijkstra Comparison</div>
+</header>
+
+<div class="main-layout">
+
+  <!-- LEFT PANEL -->
+  <div class="side-panel">
+
+    <!-- Grid Setup -->
+    <div>
+      <div class="section-title">Grid Configuration</div>
+      <div class="input-row">
+        <div>
+          <label>Rows</label>
+          <input type="number" id="rows" value="10" min="4" max="20">
+        </div>
+        <div>
+          <label>Cols</label>
+          <input type="number" id="cols" value="14" min="4" max="25">
+        </div>
+      </div>
+      <div style="margin-top:0.5rem;">
+        <button class="btn btn-primary" onclick="initGrid()">Generate Grid</button>
+      </div>
+      <div style="margin-top:0.4rem;">
+        <button class="btn btn-secondary" onclick="randomize()">⚡ Random Obstacles</button>
+      </div>
+      <div style="margin-top:0.4rem;">
+        <button class="btn btn-danger" onclick="clearGrid()">✕ Clear Grid</button>
+      </div>
+    </div>
+
+    <!-- Terrain Painter -->
+    <div>
+      <div class="section-title">Terrain Painter</div>
+      <div class="terrain-grid">
+        <div class="terrain-btn t-road active" onclick="selectTerrain('normal',this)">
+          <span>🛣️</span>Road (1)
+        </div>
+        <div class="terrain-btn t-traffic" onclick="selectTerrain('traffic',this)">
+          <span>🚦</span>Traffic (3)
+        </div>
+        <div class="terrain-btn t-mud" onclick="selectTerrain('mud',this)">
+          <span>🪨</span>Mud (5)
+        </div>
+        <div class="terrain-btn t-blocked" onclick="selectTerrain('blocked',this)">
+          <span>🧱</span>Blocked
+        </div>
+        <div class="terrain-btn t-start" onclick="selectTerrain('start',this)">
+          <span>🟢</span>Start
+        </div>
+        <div class="terrain-btn t-goal" onclick="selectTerrain('goal',this)">
+          <span>🔴</span>Goal
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div>
+      <div class="section-title">Animation Speed</div>
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <input type="range" id="speed" min="10" max="500" value="120" oninput="updateSpeed(this.value)">
+        <span class="speed-display" id="speedVal">120ms</span>
+      </div>
+    </div>
+
+    <div>
+      <button class="btn btn-success" id="runBtn" onclick="runAStar()">▶ Run A*</button>
+      <div style="margin-top:0.4rem;">
+        <button class="btn btn-compare" id="compareBtn" onclick="runComparison()">⚖ Compare Dijkstra</button>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div>
+      <div class="section-title">Legend</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1a6644;border:1px solid #00aa55"></div> Start Node</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#661a2d;border:1px solid #aa0033"></div> Goal Node</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#0d2137;border:1px solid #1a3a5c"></div> Road (cost 1)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#0d2208;border:1px solid #2a5a1a"></div> Traffic (cost 3)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1a0d05;border:1px solid #5a3a1a"></div> Mud (cost 5)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#050505;border:1px solid #333"></div> Blocked (∞)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(0,100,200,0.3);border:1px solid #0066aa"></div> Explored (Open)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(100,0,200,0.2);border:1px solid #6600aa"></div> Visited (Closed)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(0,200,100,0.3);border:1px solid #00aa55"></div> Optimal Path</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(0,212,255,0.5);border:1px solid #00d4ff"></div> Robot 🤖</div>
+    </div>
+
+  </div>
+
+  <!-- CENTER PANEL -->
+  <div class="center-panel">
+    <div id="grid-container">
+      <div id="grid"></div>
+    </div>
+    <div class="status-bar">
+      <div class="status-indicator">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Ready — Click cells to paint terrain</span>
+      </div>
+      <div class="progress-bar" style="width:200px">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="side-panel right">
+
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchTab('stats',this)">Stats</div>
+      <div class="tab" onclick="switchTab('peas',this)">PEAS</div>
+      <div class="tab" onclick="switchTab('theory',this)">Theory</div>
+    </div>
+
+    <!-- STATS TAB -->
+    <div id="tab-stats" class="tab-content active">
+      <div class="section-title">A* Results</div>
+      <div class="stat-row"><span class="label">Algorithm</span><span class="value">A* Search</span></div>
+      <div class="stat-row"><span class="label">Path Cost</span><span class="value green" id="statCost">—</span></div>
+      <div class="stat-row"><span class="label">Steps</span><span class="value" id="statSteps">—</span></div>
+      <div class="stat-row"><span class="label">Nodes Explored</span><span class="value orange" id="statExplored">—</span></div>
+      <div class="stat-row"><span class="label">Time (ms)</span><span class="value" id="statTime">—</span></div>
+      <div class="stat-row"><span class="label">Path Found</span><span class="value" id="statFound">—</span></div>
+
+      <div class="section-title" style="margin-top:1rem;">Path Coordinates</div>
+      <div id="pathCoords" style="font-size:0.6rem;color:var(--muted);max-height:80px;overflow-y:auto;line-height:1.8;"></div>
+
+      <div class="progress-bar">
+        <div class="progress-fill" id="searchProgress"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:0.5rem;">Dijkstra Comparison</div>
+      <div class="compare-box">
+        <div class="compare-row"><span>Cost</span><b id="dijkCost">—</b></div>
+        <div class="compare-row"><span>Steps</span><b id="dijkSteps">—</b></div>
+        <div class="compare-row"><span>Explored</span><b id="dijkExplored">—</b></div>
+        <div class="compare-row"><span>Time (ms)</span><b id="dijkTime">—</b></div>
+        <div class="compare-row" style="margin-top:0.4rem;padding-top:0.4rem;border-top:1px solid rgba(168,85,247,0.2)">
+          <span style="color:var(--accent)">A* Efficiency</span><b id="efficiency" style="color:var(--green)">—</b>
+        </div>
+      </div>
+
+      <div class="section-title" style="margin-top:0.5rem;">Activity Log</div>
+      <div id="log"></div>
+    </div>
+
+    <!-- PEAS TAB -->
+    <div id="tab-peas" class="tab-content">
+      <div class="section-title">PEAS Description</div>
+      <div class="peas-grid">
+        <div class="peas-card" style="grid-column:span 2">
+          <h5>Performance Measure</h5>
+          <p>Minimize total path cost, delivery time, and nodes explored. Maximize successful delivery rate and route optimality. Penalize traversing high-cost terrain (traffic/mud).</p>
+        </div>
+        <div class="peas-card" style="grid-column:span 2">
+          <h5>Environment</h5>
+          <p>Grid-based city map with multiple terrain types: normal roads (cost 1), traffic zones (cost 3), muddy/wet areas (cost 5), and impassable obstacles. Fully observable, deterministic, static during pathfinding.</p>
+        </div>
+        <div class="peas-card">
+          <h5>Actuators</h5>
+          <p>Movement motors (UP / DOWN / LEFT / RIGHT). Delivery arm/compartment. Status lights and display.</p>
+        </div>
+        <div class="peas-card">
+          <h5>Sensors</h5>
+          <p>GPS / position sensor. Terrain scanner (LiDAR). Obstacle detector. Odometer. Delivery confirmation sensor.</p>
+        </div>
+      </div>
+      <div style="margin-top:0.8rem;font-size:0.62rem;color:var(--muted);line-height:1.7;">
+        <div style="color:var(--accent);font-family:'Orbitron',monospace;font-size:0.55rem;letter-spacing:0.1em;margin-bottom:0.4rem;">ENVIRONMENT PROPERTIES</div>
+        <div>• <b style="color:var(--text)">Fully Observable</b> — complete grid known</div>
+        <div>• <b style="color:var(--text)">Deterministic</b> — fixed move outcomes</div>
+        <div>• <b style="color:var(--text)">Sequential</b> — actions affect future states</div>
+        <div>• <b style="color:var(--text)">Static</b> — grid unchanged during search</div>
+        <div>• <b style="color:var(--text)">Discrete</b> — finite grid cells</div>
+        <div>• <b style="color:var(--text)">Single-Agent</b> — one delivery robot</div>
+      </div>
+    </div>
+
+    <!-- THEORY TAB -->
+    <div id="tab-theory" class="tab-content">
+      <div class="section-title">A* Algorithm Theory</div>
+      <div class="complexity-box">
+        <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.3rem;">Evaluation function:</div>
+        <div class="formula">f(n) = g(n) + h(n)</div>
+        <div style="font-size:0.62rem;color:var(--muted);line-height:1.8;">
+          <div><b style="color:var(--accent)">g(n)</b> — actual cost from start to n</div>
+          <div><b style="color:var(--accent)">h(n)</b> — Manhattan distance heuristic</div>
+          <div style="margin-top:0.4rem;"><b style="color:var(--yellow)">h(n) = |x₁−x₂| + |y₁−y₂|</b></div>
+        </div>
+      </div>
+
+      <div class="complexity-box" style="margin-top:0.6rem;">
+        <div style="font-family:'Orbitron',monospace;font-size:0.55rem;color:var(--purple);letter-spacing:0.1em;margin-bottom:0.5rem;">TIME COMPLEXITY</div>
+        <div class="formula">O(b^d)</div>
+        <div style="font-size:0.62rem;color:var(--muted);line-height:1.8;">
+          <div><b style="color:var(--text)">b</b> = branching factor (≤4 for grid)</div>
+          <div><b style="color:var(--text)">d</b> = depth of optimal solution</div>
+          <div style="margin-top:0.4rem;">With admissible heuristic: <b style="color:var(--green)">Optimal & Complete</b></div>
+        </div>
+      </div>
+
+      <div class="complexity-box" style="margin-top:0.6rem;">
+        <div style="font-family:'Orbitron',monospace;font-size:0.55rem;color:var(--purple);letter-spacing:0.1em;margin-bottom:0.5rem;">A* vs DIJKSTRA</div>
+        <div style="font-size:0.62rem;color:var(--muted);line-height:1.8;">
+          <div><b style="color:var(--accent)">A*</b> uses heuristic → explores fewer nodes</div>
+          <div><b style="color:var(--purple)">Dijkstra</b> = A* with h(n) = 0 always</div>
+          <div>A* is typically <b style="color:var(--green)">2–5× faster</b> in practice</div>
+          <div>Both guarantee optimal path if h(n) admissible</div>
+        </div>
+      </div>
+
+      <div class="complexity-box" style="margin-top:0.6rem;">
+        <div style="font-family:'Orbitron',monospace;font-size:0.55rem;color:var(--accent2);letter-spacing:0.1em;margin-bottom:0.5rem;">HEURISTIC ADMISSIBILITY</div>
+        <div style="font-size:0.62rem;color:var(--muted);line-height:1.8;">
+          Manhattan distance is <b style="color:var(--green)">admissible</b> because it never overestimates the true cost when min terrain cost ≥ 1. This guarantees A* finds the <b style="color:var(--green)">globally optimal</b> path.
+        </div>
+      </div>
+
+      <div class="complexity-box" style="margin-top:0.6rem;">
+        <div style="font-family:'Orbitron',monospace;font-size:0.55rem;color:var(--accent2);letter-spacing:0.1em;margin-bottom:0.5rem;">DATA STRUCTURES</div>
+        <div style="font-size:0.62rem;color:var(--muted);line-height:1.8;">
+          <div>• <b style="color:var(--text)">Open List</b> — Min-heap (Priority Queue)</div>
+          <div>• <b style="color:var(--text)">Closed Set</b> — Hash set for O(1) lookup</div>
+          <div>• <b style="color:var(--text)">Parent Map</b> — Dict for path reconstruction</div>
+          <div>• <b style="color:var(--text)">g-score Map</b> — Best cost to each node</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ================================================================
+// ROBOROUTE — Smart Delivery Robot A* Pathfinding Simulation
+// ================================================================
+
+// ----- Global State -----
+let gridData = [];       // 2D array of cell types
+let rows = 10, cols = 14;
+let startCell = null, goalCell = null;
+let selectedTerrain = 'normal';
+let isDrawing = false;
+let animationQueue = [];
+let isRunning = false;
+let animSpeed = 120;
+
+// Terrain cost mapping
+const COST = { normal:1, traffic:3, mud:5, blocked:Infinity, start:1, goal:1 };
+const TERRAIN_EMOJI = { normal:'', traffic:'🚦', mud:'💧', blocked:'🧱', start:'📦', goal:'🏠' };
+const TERRAIN_CLASS = { normal:'normal', traffic:'traffic', mud:'mud', blocked:'blocked', start:'start', goal:'goal' };
+
+// ================================================================
+// GRID INITIALIZATION
+// ================================================================
+function initGrid() {
+  rows = Math.max(4, Math.min(20, parseInt(document.getElementById('rows').value) || 10));
+  cols = Math.max(4, Math.min(25, parseInt(document.getElementById('cols').value) || 14));
+
+  gridData = [];
+  startCell = null; goalCell = null;
+
+  for (let r = 0; r < rows; r++) {
+    gridData.push([]);
+    for (let c = 0; c < cols; c++) gridData[r].push('normal');
+  }
+
+  // Default start/goal
+  gridData[0][0] = 'start'; startCell = [0,0];
+  gridData[rows-1][cols-1] = 'goal'; goalCell = [rows-1, cols-1];
+
+  renderGrid();
+  resetStats();
+  log('Grid initialized: ' + rows + '×' + cols, 'info');
+}
+
+// ================================================================
+// GRID RENDERING
+// ================================================================
+function renderGrid() {
+  const grid = document.getElementById('grid');
+  const container = document.getElementById('grid-container');
+  const maxW = container.parentElement.clientWidth - 40;
+  const maxH = container.parentElement.clientHeight - 80;
+  const cellSize = Math.max(28, Math.min(52, Math.floor(Math.min(maxW/cols, maxH/rows)) - 1));
+
+  grid.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+  grid.innerHTML = '';
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell ' + TERRAIN_CLASS[gridData[r][c]];
+      cell.style.width = cell.style.height = cellSize + 'px';
+      cell.dataset.r = r; cell.dataset.c = c;
+
+      const icon = TERRAIN_EMOJI[gridData[r][c]];
+      if (icon) {
+        const ic = document.createElement('span');
+        ic.className = 'cell-icon';
+        ic.textContent = icon;
+        ic.style.fontSize = Math.max(10, cellSize * 0.5) + 'px';
+        cell.appendChild(ic);
+      }
+
+      // Cost label
+      const cost = COST[gridData[r][c]];
+      if (cost !== Infinity && cellSize >= 36) {
+        const cl = document.createElement('span');
+        cl.className = 'cost-label';
+        cl.textContent = cost;
+        cell.appendChild(cl);
+      }
+
+      cell.addEventListener('mousedown', (e) => { isDrawing=true; paintCell(e); });
+      cell.addEventListener('mouseover', (e) => { if (isDrawing) paintCell(e); });
+      cell.addEventListener('mouseup', () => isDrawing=false);
+
+      grid.appendChild(cell);
+    }
+  }
+  document.addEventListener('mouseup', () => isDrawing=false);
+}
+
+function getCell(r, c) {
+  return document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+}
+
+function updateCellVisual(r, c, extraClass) {
+  const cell = getCell(r, c);
+  if (!cell) return;
+  const base = TERRAIN_CLASS[gridData[r][c]];
+  cell.className = 'cell ' + base;
+  if (extraClass) cell.classList.add(extraClass);
+
+  // Rebuild icon
+  cell.innerHTML = '';
+  const icon = TERRAIN_EMOJI[gridData[r][c]];
+  const cellSize = parseInt(cell.style.width);
+  if (icon) {
+    const ic = document.createElement('span');
+    ic.className='cell-icon';
+    ic.textContent=icon;
+    ic.style.fontSize=Math.max(10,cellSize*0.5)+'px';
+    cell.appendChild(ic);
+  }
+  const cost = COST[gridData[r][c]];
+  if (cost !== Infinity && cellSize >= 36) {
+    const cl = document.createElement('span');
+    cl.className='cost-label';
+    cl.textContent=cost;
+    cell.appendChild(cl);
+  }
+}
+
+function paintCell(e) {
+  if (isRunning) return;
+  const cell = e.target.closest('.cell');
+  if (!cell) return;
+  const r = parseInt(cell.dataset.r), c = parseInt(cell.dataset.c);
+
+  if (selectedTerrain === 'start') {
+    if (startCell) { gridData[startCell[0]][startCell[1]] = 'normal'; updateCellVisual(startCell[0],startCell[1]); }
+    startCell = [r,c];
+  } else if (selectedTerrain === 'goal') {
+    if (goalCell) { gridData[goalCell[0]][goalCell[1]] = 'normal'; updateCellVisual(goalCell[0],goalCell[1]); }
+    goalCell = [r,c];
+  }
+
+  gridData[r][c] = selectedTerrain;
+  updateCellVisual(r, c);
+}
+
+function selectTerrain(type, btn) {
+  selectedTerrain = type;
+  document.querySelectorAll('.terrain-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function clearGrid() {
+  if (isRunning) return;
+  for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) gridData[r][c]='normal';
+  startCell=[0,0]; gridData[0][0]='start';
+  goalCell=[rows-1,cols-1]; gridData[rows-1][cols-1]='goal';
+  renderGrid(); resetStats();
+  log('Grid cleared', 'info');
+}
+
+function randomize() {
+  if (isRunning) return;
+  for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) {
+    if ((startCell && r===startCell[0] && c===startCell[1]) || (goalCell && r===goalCell[0] && c===goalCell[1])) continue;
+    const rnd = Math.random();
+    if (rnd < 0.12) gridData[r][c] = 'blocked';
+    else if (rnd < 0.22) gridData[r][c] = 'traffic';
+    else if (rnd < 0.30) gridData[r][c] = 'mud';
+    else gridData[r][c] = 'normal';
+  }
+  renderGrid();
+  log('Random terrain generated', 'info');
+}
+
+// ================================================================
+// A* ALGORITHM IMPLEMENTATION
+// ================================================================
+/**
+ * Core A* pathfinding using min-heap (priority queue via sorted array).
+ * f(n) = g(n) + h(n)
+ * g(n) = actual cost from start
+ * h(n) = Manhattan distance heuristic
+ */
+function aStar(grid, start, goal, collectExploration=true) {
+  const t0 = performance.now();
+
+  const [sr, sc] = start;
+  const [gr, gc] = goal;
+  const R = grid.length, C = grid[0].length;
+
+  // g-score: actual cost from start to each node
+  const gScore = Array.from({length:R}, () => Array(C).fill(Infinity));
+  gScore[sr][sc] = 0;
+
+  // Parent map for path reconstruction
+  const parent = Array.from({length:R}, () => Array(C).fill(null));
+
+  // Manhattan distance heuristic (admissible since min cost = 1)
+  const heuristic = (r, c) => Math.abs(r - gr) + Math.abs(c - gc);
+
+  // Open list: min-heap via array, sorted by f = g + h
+  // Each entry: [f, g, r, c]
+  const openList = [[heuristic(sr,sc), 0, sr, sc]];
+
+  // Closed set: visited nodes (set for O(1) lookup)
+  const closedSet = new Set();
+
+  const explorationOrder = []; // for animation
+  const openSet = new Set([`${sr},${sc}`]);
+
+  const directions = [[-1,0],[1,0],[0,-1],[0,1]]; // Up, Down, Left, Right
+
+  let nodesExplored = 0;
+
+  while (openList.length > 0) {
+    // Extract node with minimum f-score (simulating min-heap)
+    openList.sort((a,b) => a[0]-b[0]);
+    const [f, g, r, c] = openList.shift();
+    const key = `${r},${c}`;
+
+    if (closedSet.has(key)) continue; // already processed
+    closedSet.add(key);
+    openSet.delete(key);
+    nodesExplored++;
+
+    if (collectExploration && !(r===sr&&c===sc) && !(r===gr&&c===gc)) {
+      explorationOrder.push([r, c, 'closed']);
+    }
+
+    // Goal reached — reconstruct path
+    if (r === gr && c === gc) {
+      const path = reconstructPath(parent, start, goal);
+      const time = (performance.now() - t0).toFixed(2);
+      return { found:true, path, cost:gScore[gr][gc], explored:nodesExplored, time, explorationOrder };
+    }
+
+    // Explore neighbours
+    for (const [dr, dc] of directions) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= R || nc < 0 || nc >= C) continue;
+
+      const terrain = grid[nr][nc];
+      if (terrain === 'blocked') continue;
+
+      const nKey = `${nr},${nc}`;
+      if (closedSet.has(nKey)) continue;
+
+      const moveCost = COST[terrain] || 1;
+      const tentativeG = g + moveCost;
+
+      if (tentativeG < gScore[nr][nc]) {
+        // Found a better path to neighbour
+        gScore[nr][nc] = tentativeG;
+        parent[nr][nc] = [r, c];
+
+        const newF = tentativeG + heuristic(nr, nc);
+        openList.push([newF, tentativeG, nr, nc]);
+
+        if (!openSet.has(nKey) && !(nr===gr&&nc===gc)) {
+          explorationOrder.push([nr, nc, 'open']);
+          openSet.add(nKey);
+        }
+      }
+    }
+  }
+
+  // No path found
+  return { found:false, path:[], cost:Infinity, explored:nodesExplored, time:(performance.now()-t0).toFixed(2), explorationOrder };
+}
+
+/**
+ * Path reconstruction — trace parents from goal back to start.
+ */
+function reconstructPath(parent, start, goal) {
+  const path = [];
+  let cur = goal;
+  while (cur) {
+    path.unshift(cur);
+    const [r,c] = cur;
+    cur = parent[r][c];
+    if (cur && cur[0]===start[0] && cur[1]===start[1]) { path.unshift(start); break; }
+  }
+  return path;
+}
+
+// ================================================================
+// DIJKSTRA (h=0 always, for comparison)
+// ================================================================
+function dijkstra(grid, start, goal) {
+  const t0 = performance.now();
+  const [sr, sc] = start;
+  const [gr, gc] = goal;
+  const R = grid.length, C = grid[0].length;
+
+  const dist = Array.from({length:R}, () => Array(C).fill(Infinity));
+  dist[sr][sc] = 0;
+  const parent = Array.from({length:R}, () => Array(C).fill(null));
+  const openList = [[0, sr, sc]];
+  const visited = new Set();
+  let nodesExplored = 0;
+
+  while (openList.length > 0) {
+    openList.sort((a,b)=>a[0]-b[0]);
+    const [d, r, c] = openList.shift();
+    const key = `${r},${c}`;
+    if (visited.has(key)) continue;
+    visited.add(key); nodesExplored++;
+
+    if (r===gr && c===gc) {
+      const path = reconstructPath(parent, start, goal);
+      return { found:true, path, cost:dist[gr][gc], explored:nodesExplored, time:(performance.now()-t0).toFixed(2) };
+    }
+
+    for (const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      const nr=r+dr, nc=c+dc;
+      if (nr<0||nr>=R||nc<0||nc>=C) continue;
+      const terrain = grid[nr][nc];
+      if (terrain==='blocked') continue;
+      const nKey=`${nr},${nc}`;
+      if (visited.has(nKey)) continue;
+      const nd = d + (COST[terrain]||1);
+      if (nd < dist[nr][nc]) { dist[nr][nc]=nd; parent[nr][nc]=[r,c]; openList.push([nd,nr,nc]); }
+    }
+  }
+  return { found:false, path:[], cost:Infinity, explored:nodesExplored, time:(performance.now()-t0).toFixed(2) };
+}
+
+// ================================================================
+// RUN & ANIMATE
+// ================================================================
+async function runAStar() {
+  if (isRunning) return;
+  if (!startCell || !goalCell) { log('Set start and goal first!', 'error'); return; }
+
+  isRunning = true;
+  setStatus('running', 'Running A*...');
+  document.getElementById('runBtn').disabled = true;
+
+  // Reset visual state
+  for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) updateCellVisual(r,c);
+
+  const result = aStar(gridData, startCell, goalCell, true);
+
+  log(`A* search complete — explored ${result.explored} nodes`, 'info');
+
+  if (!result.found) {
+    log('No path found! Check for blocking obstacles.', 'error');
+    setStatus('error', 'No path found');
+    document.getElementById('statFound').textContent = '✕ No';
+    document.getElementById('statFound').style.color = 'var(--red)';
+    isRunning = false;
+    document.getElementById('runBtn').disabled = false;
+    return;
+  }
+
+  // Animate exploration
+  await animateExploration(result.explorationOrder);
+
+  // Animate path
+  await animatePath(result.path);
+
+  // Animate robot movement
+  await animateRobot(result.path);
+
+  // Update stats
+  document.getElementById('statCost').textContent = result.cost;
+  document.getElementById('statSteps').textContent = result.path.length - 1;
+  document.getElementById('statExplored').textContent = result.explored;
+  document.getElementById('statTime').textContent = result.time + 'ms';
+  document.getElementById('statFound').textContent = '✓ Yes';
+  document.getElementById('statFound').style.color = 'var(--green)';
+
+  // Path coordinates
+  const coords = result.path.map(([r,c])=>`(${r},${c})`).join(' → ');
+  document.getElementById('pathCoords').textContent = coords;
+
+  log(`Path: ${result.path.map(([r,c])=>`(${r},${c})`).join('→')}`, 'path');
+  log(`Cost: ${result.cost} | Steps: ${result.path.length-1}`, 'success');
+
+  setStatus('done', `Delivered! Cost=${result.cost}, Steps=${result.path.length-1}`);
+  isRunning = false;
+  document.getElementById('runBtn').disabled = false;
+}
+
+async function runComparison() {
+  if (isRunning) return;
+  if (!startCell || !goalCell) { log('Set start and goal first!', 'error'); return; }
+
+  const aResult = aStar(gridData, startCell, goalCell, false);
+  const dResult = dijkstra(gridData, startCell, goalCell);
+
+  document.getElementById('dijkCost').textContent = dResult.found ? dResult.cost : '∞';
+  document.getElementById('dijkSteps').textContent = dResult.found ? dResult.path.length-1 : '—';
+  document.getElementById('dijkExplored').textContent = dResult.explored;
+  document.getElementById('dijkTime').textContent = dResult.time + 'ms';
+
+  if (aResult.explored > 0 && dResult.explored > 0) {
+    const savings = (((dResult.explored - aResult.explored) / dResult.explored) * 100).toFixed(1);
+    document.getElementById('efficiency').textContent = savings > 0 ? `${savings}% fewer nodes` : 'Similar';
+  }
+
+  log(`Dijkstra: explored ${dResult.explored} nodes vs A*: ${aResult.explored}`, 'warn');
+  log(`A* explored ${((1-aResult.explored/dResult.explored)*100).toFixed(1)}% fewer nodes`, 'success');
+  switchTab('stats', document.querySelector('.tab'));
+}
+
+async function animateExploration(order) {
+  const total = order.length;
+  for (let i=0; i<order.length; i++) {
+    const [r,c,type] = order[i];
+    const cell = getCell(r,c);
+    if (cell) {
+      const base = TERRAIN_CLASS[gridData[r][c]];
+      cell.className = `cell ${base} explore-flash ${type}`;
+    }
+    document.getElementById('searchProgress').style.width = ((i/total)*60)+'%';
+    if (i % 3 === 0) await sleep(Math.max(5, animSpeed * 0.3));
+  }
+}
+
+async function animatePath(path) {
+  document.getElementById('searchProgress').style.width = '70%';
+  for (let i=1; i<path.length-1; i++) {
+    const [r,c] = path[i];
+    const cell = getCell(r,c);
+    if (cell) cell.className = `cell path path-reveal`;
+    await sleep(animSpeed * 0.5);
+  }
+  document.getElementById('searchProgress').style.width = '85%';
+}
+
+async function animateRobot(path) {
+  for (let i=0; i<path.length; i++) {
+    const [r,c] = path[i];
+    // Clear previous robot
+    if (i > 0) {
+      const [pr,pc] = path[i-1];
+      const prev = getCell(pr,pc);
+      if (prev) {
+        const isStart = pr===startCell[0]&&pc===startCell[1];
+        const isGoal  = pr===goalCell[0] &&pc===goalCell[1];
+        prev.className = `cell ${isStart?'start':isGoal?'goal':'path'}`;
+        if (isStart||isGoal) { prev.innerHTML=''; const ic=document.createElement('span'); ic.className='cell-icon'; ic.textContent=isStart?'📦':'🏠'; prev.appendChild(ic); }
+      }
+    }
+    const cell = getCell(r,c);
+    if (cell) {
+      cell.className = 'cell robot';
+      cell.innerHTML = '<span class="cell-icon" style="font-size:1rem">🤖</span>';
+    }
+    document.getElementById('progressFill').style.width = ((i/(path.length-1))*100)+'%';
+    document.getElementById('searchProgress').style.width = (85 + (i/(path.length-1))*15)+'%';
+    log(`Robot at (${r},${c}) — step ${i+1}/${path.length}`, i===path.length-1?'success':'info');
+    await sleep(animSpeed);
+  }
+  // Mark goal with robot arrived
+  if (path.length > 0) {
+    const [gr,gc] = path[path.length-1];
+    const cell = getCell(gr,gc);
+    if (cell) { cell.className='cell goal'; cell.innerHTML='<span class="cell-icon" style="font-size:1rem">🎉</span>'; }
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ================================================================
+// UI HELPERS
+// ================================================================
+function setStatus(type, text) {
+  document.getElementById('statusText').textContent = text;
+  const dot = document.getElementById('statusDot');
+  dot.className = 'status-dot ' + type;
+}
+
+function resetStats() {
+  ['statCost','statSteps','statExplored','statTime','statFound'].forEach(id => document.getElementById(id).textContent='—');
+  document.getElementById('pathCoords').textContent='';
+  document.getElementById('progressFill').style.width='0%';
+  document.getElementById('searchProgress').style.width='0%';
+  setStatus('','Ready — Click cells to paint terrain');
+}
+
+function log(msg, type='info') {
+  const logEl = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = `log-${type}`;
+  const ts = new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  line.textContent = `[${ts}] ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function updateSpeed(v) {
+  animSpeed = parseInt(v);
+  document.getElementById('speedVal').textContent = v + 'ms';
+}
+
+function switchTab(name, clickedTab) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  // Find the right tab button
+  document.querySelectorAll('.tab').forEach(t => {
+    if (t.getAttribute('onclick') && t.getAttribute('onclick').includes("'"+name+"'")) t.classList.add('active');
+  });
+}
+
+// ================================================================
+// INIT
+// ================================================================
+window.addEventListener('load', () => {
+  initGrid();
+  log('RoboRoute initialized. Paint terrain, then click Run A*!', 'success');
+  log('Tip: Use terrain painter to set obstacles and terrain types', 'info');
+});
+
+window.addEventListener('resize', () => {
+  if (!isRunning) renderGrid();
+});
+</script>
+</body>
+</html>
